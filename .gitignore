@@ -5,3 +5,4 @@ __pycache__/
 *.log
 private/
 clab/clab-*/
+10-ai-mcp/lab-AI-02/client.py
