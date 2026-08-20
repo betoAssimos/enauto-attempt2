@@ -1,0 +1,21 @@
+# containerlab/enauto.clab.yml
+#
+# Minimal ENAUTO 300-435 lab — single IOS-XE node.
+# Purpose: Ansible / NETCONF / RESTCONF target for Week 3 labs.
+# Mgmt network isolated from AUTOCOR (172.30.30.0/24, not 172.20.20.0/24).
+
+name: enauto
+
+mgmt:
+  network: enauto-mgmt
+  ipv4-subnet: 172.30.30.0/24
+
+topology:
+  nodes:
+    iosxe-01:
+      kind: cisco_c8000v
+      image: vrnetlab/cisco_c8000v:17.15.04c
+      mgmt-ipv4: 172.30.30.11
+      labels:
+        role: automation-target
+        platform: iosxe
