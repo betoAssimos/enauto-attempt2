@@ -1,9 +1,3 @@
-# containerlab/enauto.clab.yml
-#
-# Minimal ENAUTO 300-435 lab — single IOS-XE node.
-# Purpose: Ansible / NETCONF / RESTCONF target for Week 3 labs.
-# Mgmt network isolated from AUTOCOR (172.30.30.0/24, not 172.20.20.0/24).
-
 name: enauto
 
 mgmt:
