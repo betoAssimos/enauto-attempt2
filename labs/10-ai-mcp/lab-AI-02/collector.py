@@ -5,10 +5,10 @@ from netmiko import ConnectHandler
 load_dotenv(override=True)
 
 DEVICE = {
-    "device_type": os.environ["DEVICE_TYPE"],
-    "host": os.environ["DEVICE_HOST"],
-    "username": os.environ["DEVICE_USER"],
-    "password": os.environ["DEVICE_PASS"],
+    "device_type": os.environ["IOS_DEVICE_TYPE"],
+    "host": os.environ["IOS_DEVICE_HOST"],
+    "username": os.environ["IOS_DEVICE_USER"],
+    "password": os.environ["IOS_DEVICE_PASS"],
     "fast_cli": False,
 }
 
