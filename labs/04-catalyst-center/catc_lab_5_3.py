@@ -28,7 +28,7 @@ print("baseline1:", [d["hostname"] for d in baseline1])
 print("-------------------------------------------------------")
 
 # TODO 1 — same call, both parameters, page size 2, offset value A
-baseline2 = fetch(params={"offset": 5, "limit": 2})
+baseline2 = fetch(params={"offset": 1, "limit": 1})
 print("baseline2:", [d["hostname"] for d in baseline2])
 print("-------------------------------------------------------")
 # TODO 2 — same call, both parameters, page size 2, offset value B

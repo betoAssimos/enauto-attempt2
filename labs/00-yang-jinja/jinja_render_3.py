@@ -8,4 +8,4 @@ interfaces = [
 
 t =Template("{%for intf in interfaces %} interface {{intf.name}}\n description {{intf.desc}}\n ip address {{intf.ip}} {{intf.mask}}\n{%endfor%}")
 out = t.render(interfaces=interfaces)
-print(repr(out))
+print(out)
