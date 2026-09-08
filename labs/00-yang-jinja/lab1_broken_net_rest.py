@@ -62,9 +62,10 @@ payload = {
 	"ietf-interfaces:interface":
 			{
 				"name": "Loopback2",
-				"descriptions": "Test",
+				"description": "Test",
 				"type": "iana-if-type:softwareLoopback",
 				"enabled": True,
+                "oper-status": "up"
 			}
 }
 
