@@ -11,7 +11,8 @@ device = manager.connect(
 )
 
 for cap in device.server_capabilities:
-    print(cap)
+    if "ietf-interfaces" in cap:
+        print(cap)
 
 reply = device.get_schema("ietf-interfaces")
 

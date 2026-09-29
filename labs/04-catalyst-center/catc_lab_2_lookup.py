@@ -24,7 +24,7 @@ def fetch(params=None):
     return r.json()["response"]
 # baseline — no parameters, this is your Step 2 result
 baseline1 = fetch()
-print("baseline1:", [d["hostname"] for d in baseline1])
+print("baseline1:", [d["hostname"] for d in baseline1], "ID: ", [d["id"] for d in baseline1])
 print("-------------------------------------------------------")
 
 # TODO 1 — same call, both parameters, page size 2, offset value A

@@ -174,3 +174,36 @@ for device in devices:
 
     else:
         print(conn.text)
+
+for device in devices:
+    url = (
+        f"https://{device}/restconf/data/"
+        "Cisco-IOS-XE-ospf-oper:ospf-oper-data/"
+        "ospf-state"
+    )
+
+    conn = session.get(url=url)
+
+    print(f"\n=== {device} OSPF OPER ===")
+    print(f"Status Code: {conn.status_code}")
+
+    if conn.status_code == 200:
+        data = conn.json()["Cisco-IOS-XE-ospf-oper:ospf-state"]
+
+        for instance in data.get("ospf-instance", []):
+            print(f"Process ID: {instance.get('process-id')}")
+
+            for area in instance.get("ospf-area", []):
+                print(f"Area: {area.get('area-id')}")
+
+                for interface in area.get("ospf-interface", []):
+                    print(f"Interface: {interface.get('name')} "
+                          f"State: {interface.get('state')}")
+                    for neighbor in interface.get("ospf-neighbor", []):
+                        print(
+                            f"Neighbor: {neighbor.get('neighbor-id')} "
+                            f"Address: {neighbor.get('address')} "
+                            f"State: {neighbor.get('state')}"
+                        )
+    else:
+        print(conn.text)
