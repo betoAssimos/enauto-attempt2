@@ -21,3 +21,17 @@ topology:
 
     iosxe-03:
       mgmt-ipv4: 172.30.30.13
+
+    host1:
+      kind: linux
+      image: nicolaka/netshoot:latest
+
+    host2:
+      kind: linux
+      image: nicolaka/netshoot:latest
+
+  links:
+    - endpoints: ["host1:eth1", "iosxe-01:eth2"]
+    - endpoints: ["iosxe-01:eth1", "iosxe-02:eth1"]
+    - endpoints: ["iosxe-02:eth2", "iosxe-03:eth1"]
+    - endpoints: ["iosxe-03:eth2", "host2:eth1"]
