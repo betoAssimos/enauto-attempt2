@@ -11,7 +11,7 @@ device = manager.connect(
 )
 
 for cap in device.server_capabilities:
-    if "ietf-interfaces" in cap:
+    if "vlan" in cap.lower() or "native" in cap.lower():
         print(cap)
 
 reply = device.get_schema("ietf-interfaces")

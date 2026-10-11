@@ -1,0 +1,61 @@
+---
+- name: Provision Cisco Switches
+  hosts: switches
+  gather_facts: no
+
+  tasks:
+    - name: Read switch configuration
+      cisco.ios.ios_command:
+        commands:
+          - show running-config | section ^interface Ethernet0/
+          - show vlan brief
+      register: switch_output
+    
+    - name: Display switch configuration
+      ansible.builtin.debug:
+        msg: "{{ switch_output.stdout[0] }}"
+  
+    - name: Enable switch interfaces
+      cisco.ios.ios_interfaces:
+        config:
+          - name: "{{ item }}"
+            enabled: true
+        state: merged
+      loop: "{{ access_ports + trunk_ports }}"
+
+    - name: Create VLANs
+      cisco.ios.ios_vlans:
+        config:
+          - vlan_id: "{{vlan_id}}"
+            name: "{{vlan_name}}"
+        state: merged
+
+    - name: Configure L2 interfaces access
+      ios_l2_interfaces:
+        config:
+          - name: "{{ item }}"
+            mode: access
+            access:
+              vlan: "{{ vlan_id }}"
+      loop: "{{ access_ports }}"
+
+    - name: Configure L2 interfaces trunk
+      ios_l2_interfaces:
+        config:      
+          - name: "{{ item }}"
+            trunk:
+              encapsulation: dot1q
+              allowed_vlans: "{{ allowed_vlans }}"  
+            mode: trunk
+      loop: "{{ trunk_ports }}"
+
+    - name: Read switch configuration
+      cisco.ios.ios_command:
+        commands:
+          - show running-config | section ^interface Ethernet0/
+          - show vlan brief
+      register: switch_output
+    
+    - name: Display switch configuration
+      ansible.builtin.debug:
+        msg: "{{ switch_output.stdout[0] }}"

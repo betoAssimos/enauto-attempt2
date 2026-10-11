@@ -15,12 +15,31 @@ topology:
   nodes:
     iosxe-01:
       mgmt-ipv4: 172.30.30.11
+      ports:
+        - 8841:443
 
     iosxe-02:
       mgmt-ipv4: 172.30.30.12
+      ports:
+        - 8842:443
 
-    iosxe-03:
-      mgmt-ipv4: 172.30.30.13
+    switch1:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:l2-17.16.01a
+      type: L2
+      mgmt-ipv4: 172.30.30.21
+      labels:
+        role: automation-target
+        platform: iosxe-l2
+
+    switch2:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:l2-17.16.01a
+      type: L2
+      mgmt-ipv4: 172.30.30.22
+      labels:
+        role: automation-target
+        platform: iosxe-l2
 
     host1:
       kind: linux
@@ -31,7 +50,12 @@ topology:
       image: nicolaka/netshoot:latest
 
   links:
-    - endpoints: ["host1:eth1", "iosxe-01:eth2"]
+    - endpoints: ["host1:eth1", "switch1:Ethernet0/1"]
+    - endpoints: ["switch1:Ethernet0/2", "iosxe-01:eth2"]
+    - endpoints: ["switch1:Ethernet0/3", "iosxe-02:eth2"]
+
     - endpoints: ["iosxe-01:eth1", "iosxe-02:eth1"]
-    - endpoints: ["iosxe-02:eth2", "iosxe-03:eth1"]
-    - endpoints: ["iosxe-03:eth2", "host2:eth1"]
+
+    - endpoints: ["switch2:Ethernet0/2", "iosxe-02:eth3"]
+    - endpoints: ["switch2:Ethernet0/3", "iosxe-01:eth3"]
+    - endpoints: ["host2:eth1", "switch2:Ethernet0/1"]

@@ -1,0 +1,13 @@
+ansible_host: 172.30.30.22
+
+vlan_id: 20
+vlan_name: Sales
+
+access_ports:
+  - Ethernet0/1
+
+trunk_ports:
+  - Ethernet0/2
+  - Ethernet0/3
+
+allowed_vlans: "20"

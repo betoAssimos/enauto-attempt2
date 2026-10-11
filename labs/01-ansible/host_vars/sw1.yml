@@ -1,0 +1,13 @@
+ansible_host: 172.30.30.21
+
+vlan_id: 10
+vlan_name: IT
+
+access_ports:
+  - Ethernet0/1
+
+trunk_ports:
+  - Ethernet0/2
+  - Ethernet0/3
+
+allowed_vlans: "10"

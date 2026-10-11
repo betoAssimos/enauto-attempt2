@@ -1,0 +1,93 @@
+---
+- name: Provision Cisco Routers
+  hosts: ios_routers
+  gather_facts: false
+
+  tasks:
+    - name: Read router interface config
+      cisco.ios.ios_command:
+        commands:
+          - show running-config | section ^interface
+      register: router_output
+
+    - name: Display router interface config
+      ansible.builtin.debug:
+        msg: "{{ router_output.stdout }}"
+
+    - name: Enable router interfaces
+      cisco.ios.ios_interfaces:
+        config:
+          - name: "{{ item }}"
+            enabled: true
+        state: merged
+      loop:
+        - "{{ transit_interface }}"
+        - "{{ lan_interface }}"
+
+    - name: Configure L3 transit interface
+      cisco.ios.ios_l3_interfaces:
+        config:
+          - name: "{{ transit_interface }}"
+            ipv4:
+              - address: "{{ transit_ip }}"
+        state: merged
+
+    - name: Configure L3 loopback100
+      cisco.ios.ios_interfaces:
+        config:
+          - name: "{{ loopback_interface }}"
+            enabled: true
+        state: merged
+
+    - name: Configure L3 loopback100 IP
+      cisco.ios.ios_l3_interfaces:
+        config:
+          - name: "{{ loopback_interface }}"
+            ipv4:
+              - address: "{{ loopback_ip }}"
+        state: merged
+
+    - name: Configure logical subinterface for LAN
+      cisco.ios.ios_config:
+        lines:
+          - encapsulation dot1Q {{ vlan_id }}
+          - ip address {{ vlan_gateway | ansible.utils.ipaddr('address') }} {{ vlan_gateway | ansible.utils.ipaddr('netmask') }}
+        parents: interface {{ lan_interface }}.{{ vlan_id }}
+
+    - name: Configure OSPF
+      cisco.ios.ios_ospfv2:
+        config:
+          processes:
+            - process_id: 1
+              router_id: "{{ loopback_ip | ansible.utils.ipaddr('address') }}"
+
+              passive_interfaces:
+                default: true
+                interface:
+                  name:
+                    - "{{ transit_interface }}"
+                  set_interface: false
+
+              network:
+                - address: "{{ transit_ip | ansible.utils.ipaddr('network') }}"
+                  wildcard_bits: "{{ transit_ip | ansible.utils.ipaddr('hostmask') }}"
+                  area: "0"
+                - address: "{{ loopback_ip | ansible.utils.ipaddr('network') }}"
+                  wildcard_bits: "{{ loopback_ip | ansible.utils.ipaddr('hostmask') }}"
+                  area: "0"
+                - address: "{{ vlan_gateway | ansible.utils.ipaddr('network') }}"
+                  wildcard_bits: "{{ vlan_gateway | ansible.utils.ipaddr('hostmask') }}"
+                  area: "0"
+        state: merged
+
+    - name: Read router state AFTER
+      cisco.ios.ios_command:
+        commands:
+          - show ip interface brief
+          - show ip ospf neighbor
+          - show ip route ospf
+      register: router_after
+
+    - name: Display router state AFTER
+      ansible.builtin.debug:
+        msg: "{{ router_after.stdout }}"

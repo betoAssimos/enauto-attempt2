@@ -1,0 +1,49 @@
+---
+- name: Provision Linux hosts
+  hosts: linux_hosts
+  gather_facts: no
+  become: true
+
+  tasks:
+    - name: Configure network interface
+      ansible.builtin.command:
+        cmd: "docker exec {{ container_name }} ip addr show {{ interface }}"
+      register: interface_output
+      changed_when: false
+
+    - name: Display interface results
+      ansible.builtin.debug:
+        msg: "{{ interface_output.stdout_lines }}"
+
+    - name: Configure network interface
+      ansible.builtin.command:
+        cmd: "docker exec {{ container_name }} ip addr add {{ ip_address }} dev {{ interface }}"
+      when: ip_address not in interface_output.stdout
+
+    - name: Check default gateway
+      ansible.builtin.command:
+        cmd: "docker exec {{ container_name }} ip route show default"
+      register: gateway_output
+      changed_when: false
+
+    - name: Display gateway results
+      ansible.builtin.debug:
+        msg: "{{ gateway_output.stdout_lines }}"
+
+    - name: Configure default gateway
+      ansible.builtin.command:
+        cmd: "docker exec {{ container_name }} ip route replace default via {{ gateway }}"
+      when: "'default via ' ~ gateway ~ ' dev ' ~ interface not in gateway_output.stdout"
+
+    - name: Verify default gateway
+      ansible.builtin.command:
+        cmd: "docker exec {{ container_name }} ip route show default"
+      register: verify_gateway
+      changed_when: false
+
+    - name: Validate gateway configuration
+      ansible.builtin.assert:
+        that:
+          - "'default via ' ~ gateway ~ ' dev ' ~ interface in verify_gateway.stdout"
+        fail_msg: "Gateway configuration mismatch on {{ inventory_hostname }}"
+        success_msg: "Gateway correctly configured on {{ inventory_hostname }}"

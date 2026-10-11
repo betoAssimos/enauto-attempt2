@@ -1,0 +1,12 @@
+ansible_host: 172.30.30.12
+
+vlan_id: 20
+vlan_gateway: 20.20.20.1/24
+
+transit_ip: 10.0.0.2/30
+loopback_ip: 2.2.2.2/32
+
+transit_interface: GigabitEthernet2
+loopback_interface: Loopback100
+
+lan_interface: GigabitEthernet4
