@@ -1,0 +1,10 @@
+{% for iface in device.interfaces %}
+{% if iface.managed | default(false) %}
+interface {{ iface.name }}
+{% if iface.remove_description | default(false) %}
+ no description
+{% else %}
+ description {{ iface.desc | default("ENAUTO-managed") }}
+{% endif %}
+{% endif %}
+{% endfor %}

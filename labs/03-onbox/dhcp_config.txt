@@ -1,0 +1,7 @@
+ip dhcp excluded-address 10.10.10.1 10.10.10.20
+ip dhcp pool ZTP-BRANCH
+network 10.10.10.0 255.255.255.0
+default-router 10.10.10.1
+dns-server 10.0.0.53
+option 67 ascii http://10.0.0.5/ztp/day0.py
+```
