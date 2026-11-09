@@ -1,0 +1,118 @@
+---
+- name: ISE security ansible automations
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+  # Retrieving from environment variables
+    hostname: "{{ lookup('env', 'ISE_HOST') | urlsplit('hostname') }}"
+    username: "{{ lookup('env', 'ISE_USERNAME') }}"
+    password: "{{ lookup('env', 'ISE_PASSWORD') }}"
+
+  tasks:
+  - name: Retrieve ISE Security Group
+    cisco.ise.sgt_info:
+      ise_hostname: "{{ hostname }}"
+      ise_username: "{{ username }}"
+      ise_password: "{{ password }}"
+      ise_verify: false
+      id: "052d9600-f5c5-46b1-aabc-a155a4b4b554"
+      ise_version: "3.3_patch_1"
+      ise_uses_api_gateway: true
+    register: sgt_result
+
+  - name: Display SGT
+    debug:
+      var: sgt_result.ise_response
+
+  - name: Retrieve SGACL
+    cisco.ise.sg_acl_info:
+      ise_hostname: "{{ hostname }}"
+      ise_username: "{{ username }}"
+      ise_password: "{{ password }}"
+      ise_verify: false
+      ise_version: "3.3_patch_1"
+      ise_uses_api_gateway: true
+    register: sgacl_result
+
+  - name: Display SGACL
+    debug:
+      var: sgacl_result.ise_response
+
+  - name: Retrieve Egress Policy Matrix
+    cisco.ise.egress_matrix_cell_info:
+      ise_hostname: "{{ hostname }}"
+      ise_username: "{{ username }}"
+      ise_password: "{{ password }}"
+      ise_verify: false
+      ise_version: "3.3_patch_1"
+      ise_uses_api_gateway: true
+      id: "92c1a900-8c01-11e6-996c-525400b48521"
+    register: matrix_result
+
+  - name: Display Matrix
+    debug:
+      var: matrix_result.ise_response
+
+  - name: Configure disabled Lab 12 egress policy
+    cisco.ise.egress_matrix_cell:
+      ise_hostname: "{{ hostname }}"
+      ise_username: "{{ username }}"
+      ise_password: "{{ password }}"
+      ise_verify: false
+      ise_version: "3.3_patch_1"
+      ise_uses_api_gateway: true
+      ise_uses_csrf_token: true
+      name: "ENAUTO_LAB12-Test_Servers"
+      sourceSgtId: "052d9600-f5c5-46b1-aabc-a155a4b4b554"
+      destinationSgtId: "94621290-8c01-11e6-996c-525400b48521"
+      sgacls: 
+        - "92919850-8c01-11e6-996c-525400b48521"
+      defaultRule: "NONE"
+      matrixCellStatus: "DISABLED"
+    register: matrix__write_result
+
+  - name: Configure ENAUTO_LAB12 to Test_Servers policy
+    cisco.ise.egress_matrix_cell:
+      ise_hostname: "{{ hostname }}"
+      ise_username: "{{ username }}"
+      ise_password: "{{ password }}"
+      ise_verify: false
+      ise_version: "3.3_patch_1"
+      ise_uses_api_gateway: true
+      ise_uses_csrf_token: true
+      name: "ENAUTO_LAB12-Test_Servers"
+      sourceSgtId: "052d9600-f5c5-46b1-aabc-a155a4b4b554"
+      destinationSgtId: "94621290-8c01-11e6-996c-525400b48521"
+      sgacls:
+        - "92919850-8c01-11e6-996c-525400b48521"
+      defaultRule: "NONE"
+      matrixCellStatus: "ENABLED"
+    register: matrix_write_result_1
+
+  - name: Configure Test_Servers to ENAUTO_LAB12 policy
+    cisco.ise.egress_matrix_cell:
+      ise_hostname: "{{ hostname }}"
+      ise_username: "{{ username }}"
+      ise_password: "{{ password }}"
+      ise_verify: false
+      ise_version: "3.3_patch_1"
+      ise_uses_api_gateway: true
+      ise_uses_csrf_token: true
+      name: "Test_Servers-ENAUTO_LAB12"
+      sourceSgtId: "94621290-8c01-11e6-996c-525400b48521"
+      destinationSgtId: "052d9600-f5c5-46b1-aabc-a155a4b4b554"
+      sgacls:
+        - "92919850-8c01-11e6-996c-525400b48521"
+      defaultRule: "NONE"
+      matrixCellStatus: "ENABLED"
+    register: matrix_write_result_2
+
+  - name: Display first write result
+    debug:
+      var: matrix_write_result_1
+
+  - name: Display second write result
+    debug:
+      var: matrix_write_result_2

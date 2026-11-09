@@ -1,0 +1,25 @@
+---
+- name: SD-WAN inventory
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+  tasks:
+    - name: Get WAN edge devices
+      cisco.catalystwan.devices_info:
+        device_category: vedges
+        manager_credentials:
+          url: "{{ lookup('env', 'SDWAN_HOST') }}"
+          username: "{{ lookup('env', 'SDWAN_USERNAME') }}"
+          password: "{{ lookup('env', 'SDWAN_PASSWORD') }}"
+      register: edge_devices
+
+    - name: Show device hostnames
+      ansible.builtin.debug:
+        msg: "{{ item.host_name }}"
+      loop: "{{ edge_devices.devices }}"
+      loop_control:
+        label: "{{ item.host_name }}"

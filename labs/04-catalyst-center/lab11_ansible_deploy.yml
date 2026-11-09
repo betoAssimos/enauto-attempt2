@@ -1,0 +1,79 @@
+---
+- name: Catalyst Center Deploy
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+  # Retrieving from environment variables
+    hostname: "{{ lookup('env', 'CATC_BASE_URL') | urlsplit('hostname') }}"
+    username: "{{ lookup('env', 'CATC_USERNAME') }}"
+    password: "{{ lookup('env', 'CATC_PASSWORD') }}"
+
+  tasks:
+  - name: Deploy existing template to sw1
+    cisco.catalystcenter.configuration_template_deploy:
+      catalystcenter_host: "{{hostname}}"
+      catalystcenter_username: "{{username}}"
+      catalystcenter_password: "{{password}}"
+      catalystcenter_version: "2.3.7.9"
+      catalystcenter_verify: false
+
+      forcePushTemplate: false
+      isComposite: false
+      templateId: "7da97b5c-ae97-49b1-a97a-e37fe9637b93"
+
+      targetInfo:
+        # sw1
+        - id: "0a84b333-fedc-4097-9100-ec806f8e1d11"
+          type: MANAGED_DEVICE_UUID
+          versionedTemplateId: "93e8185d-455d-470f-9f4d-13eacdcef587"
+          params:
+            device:
+              name: sw1
+              interfaces:
+                - name: Vlan1
+                  desc: ENAUTO-ANSIBLE-LAB11
+                  managed: true
+
+        # sw2
+        - id: "8128b3ba-10fa-4672-9c3a-8dd597cc9343"
+          type: MANAGED_DEVICE_UUID
+          versionedTemplateId: "93e8185d-455d-470f-9f4d-13eacdcef587"
+          params:
+            device:
+              name: sw2
+              interfaces:
+                - name: Vlan1
+                  desc: ENAUTO-ANSIBLE-LAB11
+                  managed: true
+
+        # sw3
+        - id: "1de008b0-2c15-43fa-a131-f47bd9cb30df"
+          type: MANAGED_DEVICE_UUID
+          versionedTemplateId: "93e8185d-455d-470f-9f4d-13eacdcef587"
+          params:
+            device:
+              name: sw3
+              interfaces:
+                - name: Vlan1
+                  desc: ENAUTO-ANSIBLE-LAB11
+                  managed: true
+
+        # sw4
+        - id: "d9af1193-0af8-49c6-a529-2b11e1a82114"
+          type: MANAGED_DEVICE_UUID
+          versionedTemplateId: "93e8185d-455d-470f-9f4d-13eacdcef587"
+          params:
+            device:
+              name: sw4
+              interfaces:
+                - name: Vlan1
+                  desc: ENAUTO-ANSIBLE-LAB11
+                  managed: true
+
+    register: deploy_result
+    
+  - name: Display deployment response
+    debug:
+      var: deploy_result.catalystcenter_response

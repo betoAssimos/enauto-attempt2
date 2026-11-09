@@ -1,0 +1,36 @@
+---
+- name: Catalyst Center Deploy
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+  # Retrieving from environment variables
+    hostname: "{{ lookup('env', 'CATC_BASE_URL') | urlsplit('hostname') }}"
+    username: "{{ lookup('env', 'CATC_USERNAME') }}"
+    password: "{{ lookup('env', 'CATC_PASSWORD') }}"
+
+  tasks:
+  - name: Preview template for sw1
+    cisco.catalystcenter.template_preview:
+      catalystcenter_host: "{{ hostname }}"
+      catalystcenter_username: "{{ username }}"
+      catalystcenter_password: "{{ password }}"
+      catalystcenter_version: "2.3.7.9"
+      catalystcenter_verify: false
+
+      templateId: "7da97b5c-ae97-49b1-a97a-e37fe9637b93"
+      deviceId: "0a84b333-fedc-4097-9100-ec806f8e1d11"
+      params:
+        device:
+          name: sw1
+          interfaces:
+            - name: Vlan1
+              desc: ENAUTO-ANSIBLE-LAB11
+              managed: true
+
+    register: preview_result
+
+  - name: Display preview
+    debug:
+      var: preview_result.catalystcenter_response

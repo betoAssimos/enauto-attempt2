@@ -1,0 +1,44 @@
+---
+- name: Catalyst Center Deploy
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+  # Retrieving from environment variables
+    hostname: "{{ lookup('env', 'CATC_BASE_URL') | urlsplit('hostname') }}"
+    username: "{{ lookup('env', 'CATC_USERNAME') }}"
+    password: "{{ lookup('env', 'CATC_PASSWORD') }}"
+
+  tasks:
+  - name: Authenticate to Catalyst Center
+    ansible.builtin.uri:
+      url: "https://{{ hostname }}/dna/system/api/v1/auth/token"
+      method: POST
+      url_username: "{{ username }}"
+      url_password: "{{ password }}"
+      force_basic_auth: true
+      validate_certs: false
+      status_code: 200
+    register: auth_result
+    no_log: true
+
+  - name: Verify authentication
+    debug:
+      msg: "HTTP {{ auth_result.status }}; token received: {{ auth_result.json.Token is defined }}"
+
+  - name: Get network devices
+    ansible.builtin.uri:
+      url: "https://{{ hostname }}/dna/intent/api/v1/network-device"
+      method: GET
+      headers:
+        X-Auth-Token: "{{ auth_result.json.Token }}"
+        Accept: "application/json"
+      validate_certs: false
+      status_code: 200
+    register: inventory_result
+    no_log: true
+
+  - name: Display network devices
+    debug:
+      var: inventory_result.json.response

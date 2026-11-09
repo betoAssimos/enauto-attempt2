@@ -1,0 +1,27 @@
+---
+- name: Catalyst Center inventory
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+  # Retrieving from environment variables
+    hostname: "{{ lookup('env', 'CATC_BASE_URL') | urlsplit('hostname') }}"
+    username: "{{ lookup('env', 'CATC_USERNAME') }}"
+    password: "{{ lookup('env', 'CATC_PASSWORD') }}"
+
+  tasks:
+  - name: Check Network Device Info
+    cisco.catalystcenter.network_device_info:
+      catalystcenter_host: "{{hostname}}"
+      catalystcenter_username: "{{username}}"
+      catalystcenter_password: "{{password}}"
+      catalystcenter_version: "2.3.7.9"
+      catalystcenter_verify: false
+      offset: 1
+      limit: 30
+    register: inv_result
+
+  - name: Display result
+    debug:
+      var: inv_result.catalystcenter_response.response

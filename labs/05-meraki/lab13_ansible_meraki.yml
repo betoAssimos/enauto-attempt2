@@ -1,0 +1,27 @@
+---
+- name: Read Meraki inventory
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+  tasks:
+    - name: Get devices in branch_office
+      cisco.meraki.organizations_devices_info:
+        meraki_api_key: "{{ lookup('env', 'MERAKI_API_KEY') }}"
+        organizationId: "669910444571370741"
+        networkIds:
+          - "L_669910444571385196"
+        total_pages: "-1"
+        direction: next
+        meraki_suppress_logging: true
+      register: meraki_devices
+
+    - name: Show device inventory
+      ansible.builtin.debug:
+        msg: "{{ item.serial }} | {{ item.model }} | {{ item.productType }}"
+      loop: "{{ meraki_devices.meraki_response }}"
+      loop_control:
+        label: "{{ item.serial }}"

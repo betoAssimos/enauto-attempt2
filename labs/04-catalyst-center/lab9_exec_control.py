@@ -97,7 +97,7 @@ if __name__ == "__main__":
     selected_ids = []
 
     for device in devices["response"]:
-        if device["hostname"] == "sw1" and device["reachabilityStatus"] == "Reachable":
+        if device["hostname"] == "sw4" and device["reachabilityStatus"] == "Reachable":
             selected_ids.append(device["id"])
 
     print(f"Selected ID from SW1: {selected_ids}")
