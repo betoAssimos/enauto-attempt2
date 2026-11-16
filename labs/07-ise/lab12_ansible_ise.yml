@@ -55,24 +55,6 @@
     debug:
       var: matrix_result.ise_response
 
-  - name: Configure disabled Lab 12 egress policy
-    cisco.ise.egress_matrix_cell:
-      ise_hostname: "{{ hostname }}"
-      ise_username: "{{ username }}"
-      ise_password: "{{ password }}"
-      ise_verify: false
-      ise_version: "3.3_patch_1"
-      ise_uses_api_gateway: true
-      ise_uses_csrf_token: true
-      name: "ENAUTO_LAB12-Test_Servers"
-      sourceSgtId: "052d9600-f5c5-46b1-aabc-a155a4b4b554"
-      destinationSgtId: "94621290-8c01-11e6-996c-525400b48521"
-      sgacls: 
-        - "92919850-8c01-11e6-996c-525400b48521"
-      defaultRule: "NONE"
-      matrixCellStatus: "DISABLED"
-    register: matrix__write_result
-
   - name: Configure ENAUTO_LAB12 to Test_Servers policy
     cisco.ise.egress_matrix_cell:
       ise_hostname: "{{ hostname }}"

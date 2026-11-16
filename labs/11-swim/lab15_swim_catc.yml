@@ -1,0 +1,205 @@
+---
+- name: Catalyst Center SWIM lab
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+  # Retrieving from environment variables
+    catc_host: "{{ lookup('env', 'CATC_BASE_URL') | urlsplit('hostname') }}"
+    catc_username: "{{ lookup('env', 'CATC_USERNAME') }}"
+    catc_password: "{{ lookup('env', 'CATC_PASSWORD') }}"
+    target_image_name: "test-image.bin"
+    target_software_version: "REPLACE_WITH_EXPECTED_DEVICE_VERSION"
+
+  tasks:
+  - name: Check Device
+    cisco.catalystcenter.network_device_info:
+      catalystcenter_host: "{{catc_host}}"
+      catalystcenter_username: "{{catc_username}}"
+      catalystcenter_password: "{{catc_password}}"
+      catalystcenter_verify: False
+      catalystcenter_version: "2.3.7.9"
+      hostname: ["sw1"]
+    register: device_result
+
+  - name: Display result
+    ansible.builtin.debug:
+      var: device_result.catalyst_response
+
+  - name: Get software image info
+    cisco.catalystcenter.swim_image_details_info:
+      catalystcenter_host: "{{catc_host}}"
+      catalystcenter_username: "{{catc_username}}"
+      catalystcenter_password: "{{catc_password}}"
+      catalystcenter_verify: False
+      catalystcenter_version: "2.3.7.9"
+    register: image_result
+
+  - name: Display image result
+    ansible.builtin.debug:
+      var: image_result.catalyst_response
+
+  - name: Image importation
+    cisco.catalystcenter.swim_import_via_url_v1:
+      catalystcenter_host: "{{catc_host}}"
+      catalystcenter_username: "{{catc_username}}"
+      catalystcenter_password: "{{catc_password}}"
+      catalystcenter_verify: False
+      catalystcenter_version: "2.3.7.9"
+      
+      payload:
+        - sourceURL: "http://swim-lab.invalid/test-image.bin"
+          thirdParty: false
+    
+    register: import_result
+
+  - name: Display import result
+    ansible.builtin.debug:
+      var: import_result.catalyst_response
+
+  - name: Task poller image importation
+    cisco.catalystcenter.task_info:
+      catalystcenter_host: "{{catc_host}}"
+      catalystcenter_username: "{{catc_username}}"
+      catalystcenter_password: "{{catc_password}}"
+      catalystcenter_verify: False
+      catalystcenter_version: "2.3.7.9"
+      taskId: "{{ import_result.catalyst_response.response.taskId }}"
+    
+    register: task_result
+    until: (task_result.catalyst_response.response.endTime | default(0, true) | int) > 0
+    retries: 30
+    delay: 2
+
+  - name: Display completed import task
+    ansible.builtin.debug:
+      var: task_result.catalyst_response.response
+
+  - name: Verify import succeeded
+    ansible.builtin.assert:
+      that:
+        - not (task_result.catalyst_response.response.isError | bool)
+      fail_msg: >-
+        {{ task_result.catalyst_response.response.failureReason | default(task_result.catalyst_response.response.progress, true) }}
+      success_msg: "Image import completed successfully."
+
+  - name: Find the imported image
+    cisco.catalystcenter.swim_image_details_info:
+      catalystcenter_host: "{{ catc_host }}"
+      catalystcenter_username: "{{ catc_username }}"
+      catalystcenter_password: "{{ catc_password }}"
+      catalystcenter_verify: false
+      catalystcenter_version: "2.3.7.9"
+      name: "{{ target_image_name }}"
+    register: selected_image_result
+
+  - name: Verify device and image selection
+    ansible.builtin.assert:
+      that:
+        - device_result.catalyst_response.response | length == 1
+        - selected_image_result.catalyst_response.response | length == 1
+        - selected_image_result.catalyst_response.response[0].name == target_image_name
+      fail_msg: "Expected exactly one target device and one image matching the target filename."
+
+  - name: Save selected IDs
+    ansible.builtin.set_fact:
+      device_id: "{{ device_result.catalyst_response.response[0].id }}"
+      image_id: "{{ selected_image_result.catalyst_response.response[0].imageUuid }}"
+
+  - name: Distribute selected image
+    cisco.catalystcenter.swim_trigger_distribution:
+      catalystcenter_host: "{{catc_host}}"
+      catalystcenter_username: "{{catc_username}}"
+      catalystcenter_password: "{{catc_password}}"
+      catalystcenter_verify: False
+      catalystcenter_version: "2.3.7.9"
+
+      payload:
+        - deviceUuid: "{{ device_id }}"
+          imageUuid: "{{ image_id }}"
+    
+    register: distribution_result
+
+  - name: Task poller image distribution
+    cisco.catalystcenter.task_info:
+      catalystcenter_host: "{{catc_host}}"
+      catalystcenter_username: "{{catc_username}}"
+      catalystcenter_password: "{{catc_password}}"
+      catalystcenter_verify: False
+      catalystcenter_version: "2.3.7.9"
+      taskId: "{{ distribution_result.catalyst_response.response.taskId }}"
+    
+    register: distribution_task
+    until: (distribution_task.catalyst_response.response.endTime | default(0, true) | int) > 0
+    retries: 30
+    delay: 2
+
+  - name: Verify distribute succeeded
+    ansible.builtin.assert:
+      that:
+        - not (distribution_task.catalyst_response.response.isError | bool)
+      fail_msg: >-
+        {{ distribution_task.catalyst_response.response.failureReason | default(distribution_task.catalyst_response.response.progress, true) }}
+      success_msg: "Image distribution completed successfully."
+
+  - name: Activate selected image
+    cisco.catalystcenter.swim_trigger_activation:
+      catalystcenter_host: "{{catc_host}}"
+      catalystcenter_username: "{{catc_username}}"
+      catalystcenter_password: "{{catc_password}}"
+      catalystcenter_verify: False
+      catalystcenter_version: "2.3.7.9"
+
+      payload:
+        - deviceUuid: "{{ device_id }}"
+          imageUuidList: 
+            - "{{ image_id }}"
+    
+    register: activation_result
+
+  - name: Task poller image activation
+    cisco.catalystcenter.task_info:
+      catalystcenter_host: "{{catc_host}}"
+      catalystcenter_username: "{{catc_username}}"
+      catalystcenter_password: "{{catc_password}}"
+      catalystcenter_verify: False
+      catalystcenter_version: "2.3.7.9"
+      taskId: "{{ activation_result.catalyst_response.response.taskId }}"
+    
+    register: activation_task
+    until: (activation_task.catalyst_response.response.endTime | default(0, true) | int) > 0
+    retries: 30
+    delay: 2
+
+  - name: Verify activate succeeded
+    ansible.builtin.assert:
+      that:
+        - not (activation_task.catalyst_response.response.isError | bool)
+      fail_msg: >-
+        {{ activation_task.catalyst_response.response.failureReason | default(activation_task.catalyst_response.response.progress, true) }}
+      success_msg: "Image activation completed successfully."
+
+  - name: Wait for the device to report the target version
+    cisco.catalystcenter.network_device_info:
+      catalystcenter_host: "{{ catc_host }}"
+      catalystcenter_username: "{{ catc_username }}"
+      catalystcenter_password: "{{ catc_password }}"
+      catalystcenter_verify: false
+      catalystcenter_version: "2.3.7.9"
+      id: "{{ device_id }}"
+    register: post_upgrade_result
+    until:
+      - (post_upgrade_result.catalyst_response.response.softwareVersion | default('')) == target_software_version
+      - (post_upgrade_result.catalyst_response.response.reachabilityStatus | default('')) == 'Reachable'
+    retries: 30
+    delay: 20
+
+  - name: Display upgrade verification
+    ansible.builtin.debug:
+      msg:
+        device: "{{ post_upgrade_result.catalyst_response.response.hostname }}"
+        previous_version: "{{ device_result.catalyst_response.response[0].softwareVersion }}"
+        reported_version: "{{ post_upgrade_result.catalyst_response.response.softwareVersion }}"
+        expected_version: "{{ target_software_version }}"
+        reachability: "{{ post_upgrade_result.catalyst_response.response.reachabilityStatus }}"

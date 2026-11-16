@@ -1,0 +1,184 @@
+---
+- name: Discover Meraki firmware and optionally schedule an upgrade
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    meraki_api_key: "{{ lookup('ansible.builtin.env', 'MERAKI_API_KEY') }}"
+    apply_upgrade: false
+    product_type: switch
+    # Choose an ID from the displayed available_versions, not a saved reservation ID.
+    target_version_id: ""
+    # Supply a future UTC timestamp in YYYY-MM-DDTHH:MM:SSZ format.
+    # An explicit timestamp avoids moving the schedule forward on every rerun.
+    upgrade_time: ""
+
+  module_defaults:
+    cisco.meraki.organizations_info:
+      meraki_api_key: "{{ meraki_api_key }}"
+    cisco.meraki.networks_info:
+      meraki_api_key: "{{ meraki_api_key }}"
+    cisco.meraki.devices_info:
+      meraki_api_key: "{{ meraki_api_key }}"
+    cisco.meraki.organizations_devices_availabilities_info:
+      meraki_api_key: "{{ meraki_api_key }}"
+    cisco.meraki.networks_firmware_upgrades_info:
+      meraki_api_key: "{{ meraki_api_key }}"
+    cisco.meraki.networks_firmware_upgrades:
+      meraki_api_key: "{{ meraki_api_key }}"
+
+  tasks:
+    - name: Require an exported API key
+      ansible.builtin.assert:
+        that:
+          - meraki_api_key | length > 0
+        fail_msg: Export MERAKI_API_KEY before running the playbook.
+      no_log: true
+
+    - name: Read organizations
+      cisco.meraki.organizations_info:
+      register: org_result
+      no_log: true
+
+    - name: Require exactly one organization for this reservation
+      ansible.builtin.assert:
+        that:
+          - org_result.meraki_response | length == 1
+        fail_msg: Expected exactly one organization for this reservation.
+
+    - name: Select the discovered organization
+      ansible.builtin.set_fact:
+        org_id: "{{ org_result.meraki_response[0]['id'] }}"
+
+    - name: Read networks in the organization
+      cisco.meraki.networks_info:
+        organizationId: "{{ org_id }}"
+      register: network_result
+      no_log: true
+
+    - name: Require exactly one network for this reservation
+      ansible.builtin.assert:
+        that:
+          - network_result.meraki_response | length == 1
+        fail_msg: Expected exactly one network for this reservation.
+
+    - name: Select the discovered network
+      ansible.builtin.set_fact:
+        network_id: "{{ network_result.meraki_response[0]['id'] }}"
+        network_name: "{{ network_result.meraki_response[0]['name'] }}"
+
+    - name: Read firmware versions and schedules
+      cisco.meraki.networks_firmware_upgrades_info:
+        networkId: "{{ network_id }}"
+      register: firmware_result
+      no_log: true
+
+    - name: Read devices in the selected network
+      cisco.meraki.devices_info:
+        organizationId: "{{ org_id }}"
+        networkIds:
+          - "{{ network_id }}"
+      register: devices_result
+      no_log: true
+
+    - name: Read device availability in the selected network
+      cisco.meraki.organizations_devices_availabilities_info:
+        organizationId: "{{ org_id }}"
+        networkIds:
+          - "{{ network_id }}"
+      register: availability_result
+      no_log: true
+
+    - name: Show network and devices
+      ansible.builtin.debug:
+        msg:
+          network_id: "{{ network_id }}"
+          network_name: "{{ network_name }}"
+          devices: "{{ devices_result.meraki_response }}"
+          availability: "{{ availability_result.meraki_response }}"
+
+    - name: Require firmware information for the selected product category
+      ansible.builtin.assert:
+        that:
+          - product_type in firmware_result.meraki_response['products']
+        fail_msg: The firmware response does not contain the selected product category.
+
+    - name: Select firmware information for the product category
+      ansible.builtin.set_fact:
+        product_firmware: "{{ firmware_result.meraki_response['products'][product_type] }}"
+
+    - name: Show current version, available versions, and pending schedule
+      ansible.builtin.debug:
+        msg:
+          product_type: "{{ product_type }}"
+          current_version: "{{ product_firmware['currentVersion'] }}"
+          available_versions: "{{ product_firmware['availableVersions'] }}"
+          next_upgrade: "{{ product_firmware['nextUpgrade'] }}"
+
+    - name: Optionally schedule firmware and verify the stored schedule
+      when: apply_upgrade | bool
+      block:
+        - name: Require a different version listed by the API
+          ansible.builtin.assert:
+            that:
+              - target_version_id | string | length > 0
+              - (target_version_id | string) in (product_firmware['availableVersions'] | map(attribute='id') | list)
+              - (target_version_id | string) != (product_firmware['currentVersion']['id'] | string)
+            fail_msg: Choose an available firmware ID different from the configured version.
+
+        - name: Require an explicit UTC scheduling timestamp
+          ansible.builtin.assert:
+            that:
+              - upgrade_time is match('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$')
+            fail_msg: Set upgrade_time to a future UTC timestamp in YYYY-MM-DDTHH:MM:SSZ format.
+
+        - name: Require a future scheduling time
+          ansible.builtin.assert:
+            that:
+              - >-
+                (upgrade_time | to_datetime('%Y-%m-%dT%H:%M:%SZ')) >
+                (now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') | to_datetime('%Y-%m-%dT%H:%M:%SZ'))
+            fail_msg: The requested upgrade time must be in the future.
+
+        - name: Build the product firmware update
+          ansible.builtin.set_fact:
+            upgrade_products: "{{ {product_type: {'nextUpgrade': {'time': upgrade_time, 'toVersion': {'id': target_version_id | string}}}} }}"
+
+        - name: Submit the firmware schedule
+          cisco.meraki.networks_firmware_upgrades:
+            state: present
+            networkId: "{{ network_id }}"
+            products: "{{ upgrade_products }}"
+          register: schedule_result
+          no_log: true
+
+        - name: Read firmware information again after scheduling
+          cisco.meraki.networks_firmware_upgrades_info:
+            networkId: "{{ network_id }}"
+          register: updated_firmware_result
+          no_log: true
+
+        - name: Extract the stored pending upgrade
+          ansible.builtin.set_fact:
+            stored_upgrade: "{{ updated_firmware_result.meraki_response['products'][product_type]['nextUpgrade'] }}"
+
+        - name: Verify the scheduled target version
+          ansible.builtin.assert:
+            that:
+              - (stored_upgrade.get('toVersion', {}).get('id', '') | string) == (target_version_id | string)
+              - stored_upgrade.get('time', '') | length > 0
+            fail_msg: The follow-up GET did not show the requested target with a schedule time.
+
+        - name: Show requested and stored schedule
+          ansible.builtin.debug:
+            msg:
+              requested_version_id: "{{ target_version_id }}"
+              requested_time: "{{ upgrade_time }}"
+              stored_next_upgrade: "{{ stored_upgrade }}"
+              verification_scope: Pending schedule only; device upgrade completion is not checked.
+
+    - name: Report read-only operation
+      ansible.builtin.debug:
+        msg: Discovery completed. Scheduling skipped because apply_upgrade is false.
+      when: not (apply_upgrade | bool)
