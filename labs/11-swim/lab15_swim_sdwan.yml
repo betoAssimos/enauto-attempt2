@@ -1,201 +1,141 @@
 ---
-- name: Discover SD-WAN software and optionally upgrade Edge1
+- name: SD-WAN SWIM lab
   hosts: localhost
   connection: local
   gather_facts: false
 
   vars:
     ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-    manager_credentials:
-      url: "{{ lookup('ansible.builtin.env', 'SDWAN_HOST') }}"
-      username: "{{ lookup('ansible.builtin.env', 'SDWAN_USERNAME') }}"
-      password: "{{ lookup('ansible.builtin.env', 'SDWAN_PASSWORD') }}"
-
-    target_hostname: Edge1
+  # Retrieving from environment variables
+    sdwan_login:
+      url: "{{ lookup('env', 'SDWAN_HOST') }}"
+      username: "{{ lookup('env', 'SDWAN_USERNAME') }}"
+      password: "{{ lookup('env', 'SDWAN_PASSWORD') }}"
+  # Upgrade stays disabled, there is no compatible image for this reservation
     apply_upgrade: false
-    image_path: ""
-    target_version: ""
+    image_path: "REPLACE_WITH_LOCAL_IMAGE_FILE"
+    target_version: "REPLACE_WITH_REPOSITORY_VERSION"
     make_default: false
 
-  module_defaults:
-    cisco.catalystwan.devices_info:
-      manager_credentials: "{{ manager_credentials }}"
-    cisco.catalystwan.software_repository_info:
-      manager_credentials: "{{ manager_credentials }}"
-    cisco.catalystwan.software_upgrade_info:
-      manager_credentials: "{{ manager_credentials }}"
-    cisco.catalystwan.software_repository:
-      manager_credentials: "{{ manager_credentials }}"
-    cisco.catalystwan.software_upgrade:
-      manager_credentials: "{{ manager_credentials }}"
-
   tasks:
-    - name: Read the selected edge device
-      cisco.catalystwan.devices_info:
-        device_category: vedges
-        filters:
-          host_name: "{{ target_hostname }}"
-      register: device_result
+  - name: Get Edge1
+    cisco.catalystwan.devices_info:
+      manager_credentials: "{{sdwan_login}}"
+      device_category: vedges
+      filters:
+        host_name: "Edge1"
+    register: device_result
 
-    - name: Require exactly one matching edge
+  - name: Must find only one device
+    ansible.builtin.assert:
+      that:
+        - device_result.devices | length == 1
+
+  - name: Save Edge1
+    ansible.builtin.set_fact:
+      edge: "{{ device_result.devices[0] }}"
+
+  - name: Get software repository
+    cisco.catalystwan.software_repository_info:
+      manager_credentials: "{{sdwan_login}}"
+      category: software_images
+    register: repository_result
+
+  - name: Get software installed on Edge1
+    cisco.catalystwan.software_upgrade_info:
+      manager_credentials: "{{sdwan_login}}"
+      device_type: vedge
+      filters:
+        host_name: "Edge1"
+    register: software_result
+
+  - name: Display Edge1 version and reachability
+    ansible.builtin.debug:
+      msg: "{{ edge.host_name }} | {{ edge.version }} | {{ edge.reachability }}"
+
+  - name: Display repository
+    ansible.builtin.debug:
+      var: repository_result.software_images
+
+  - name: Display installed software
+    ansible.builtin.debug:
+      var: software_result.installed_devices
+
+  # NOT TESTED. Everything below only runs with apply_upgrade: true
+  # Order: upload -> install -> activate -> verify -> set default
+  - name: Upgrade Edge1
+    when: apply_upgrade | bool
+    block:
+    - name: Edge1 must be reachable and on a different version
       ansible.builtin.assert:
         that:
-          - device_result.devices | length == 1
-        fail_msg: Expected exactly one matching edge device.
+          - edge.reachability == 'reachable'
+          - edge.version != target_version
 
-    - name: Store the selected device
-      ansible.builtin.set_fact:
-        selected_device: "{{ device_result.devices[0] }}"
+    - name: Upload image to the Manager repository
+      cisco.catalystwan.software_repository:
+        manager_credentials: "{{sdwan_login}}"
+        software:
+          state: present
+          image_path: "{{image_path}}"
 
-    - name: Read the software repository
+    - name: Get software repository again
       cisco.catalystwan.software_repository_info:
+        manager_credentials: "{{sdwan_login}}"
         category: software_images
-      register: repository_result
+      register: repository_after
 
-    - name: Read software upgrade information for the edge
-      cisco.catalystwan.software_upgrade_info:
-        device_type: vedge
+    - name: Target version must be in the repository
+      ansible.builtin.assert:
+        that:
+          - target_version in (repository_after.software_images | map(attribute='version_name') | list)
+
+    # state present = install only, the device keeps running the old version
+    - name: Install image
+      cisco.catalystwan.software_upgrade:
+        manager_credentials: "{{sdwan_login}}"
+        state: present
+        image_version: "{{target_version}}"
+        devices:
+          - "{{ edge.uuid }}"
+        reboot: false
+        sync: true
+        wait_for_completed: true
+        wait_timeout_seconds: 1800
+
+    # state active = change partition, the device reboots
+    - name: Activate image
+      cisco.catalystwan.software_upgrade:
+        manager_credentials: "{{sdwan_login}}"
+        state: active
+        image_version: "{{target_version}}"
+        devices:
+          - "{{ edge.uuid }}"
+        wait_for_completed: true
+        wait_timeout_seconds: 1800
+
+    - name: Wait for Edge1 to come back on the target version
+      cisco.catalystwan.devices_info:
+        manager_credentials: "{{sdwan_login}}"
+        device_category: vedges
         filters:
-          host_name: "{{ target_hostname }}"
-      register: software_result
+          host_name: "Edge1"
+      register: post_result
+      until: post_result.devices[0].reachability == 'reachable' and post_result.devices[0].version == target_version
+      retries: 60
+      delay: 10
 
-    - name: Show discovery results
+    - name: Display version before and after
       ansible.builtin.debug:
-        msg:
-          device: "{{ selected_device }}"
-          repository: "{{ repository_result.software_images }}"
-          software: "{{ software_result.installed_devices }}"
+        msg: "{{ edge.host_name }} | before {{ edge.version }} | after {{ post_result.devices[0].version }}"
 
-    - name: Optional software upgrade
-      when: apply_upgrade | bool
-      block:
-        - name: Check the target version and device reachability
-          ansible.builtin.assert:
-            that:
-              - target_version | length > 0
-              - target_version != selected_device.version
-              - selected_device.reachability == 'reachable'
-            fail_msg: Set a different target version and select a reachable edge.
-
-        - name: Upload a local software image when supplied
-          cisco.catalystwan.software_repository:
-            software:
-              state: present
-              image_path: "{{ image_path }}"
-          when: image_path | length > 0
-
-        - name: Refresh repository information
-          cisco.catalystwan.software_repository_info:
-            category: software_images
-          register: repository_after_upload
-
-        - name: Select the target version from the local repository
-          ansible.builtin.set_fact:
-            matching_images: >-
-              {{
-                repository_after_upload.software_images
-                | selectattr('version_name', 'equalto', target_version)
-                | selectattr('version_type', 'equalto', 'vmanage')
-                | list
-              }}
-
-        - name: Require exactly one matching repository image
-          ansible.builtin.assert:
-            that:
-              - matching_images | length == 1
-            fail_msg: The target version must exist in the Manager repository.
-
-        - name: Install the image without activating it
-          cisco.catalystwan.software_upgrade:
-            state: present
-            image_version: "{{ target_version }}"
-            devices:
-              - "{{ selected_device.uuid }}"
-            reboot: false
-            sync: true
-            wait_for_completed: true
-            wait_timeout_seconds: 1800
-
-        - name: Read installed versions after installation
-          cisco.catalystwan.software_upgrade_info:
-            device_type: vedge
-            filters:
-              host_name: "{{ target_hostname }}"
-          register: installed_result
-
-        - name: Require one matching software inventory record
-          ansible.builtin.assert:
-            that:
-              - installed_result.installed_devices | length == 1
-
-        - name: Confirm the target version is installed
-          ansible.builtin.assert:
-            that:
-              - target_version in (installed_result.installed_devices[0].available_versions | default([], true))
-            fail_msg: The target version was not listed after installation.
-
-        - name: Activate the installed image
-          cisco.catalystwan.software_upgrade:
-            state: active
-            image_version: "{{ target_version }}"
-            devices:
-              - "{{ selected_device.uuid }}"
-            wait_for_completed: true
-            wait_timeout_seconds: 1800
-
-        - name: Wait for the edge to return with the target version
-          cisco.catalystwan.devices_info:
-            device_category: vedges
-            filters:
-              uuid: "{{ selected_device.uuid }}"
-          register: post_upgrade_result
-          until: >-
-            (post_upgrade_result.devices | default([]) | length == 1)
-            and (post_upgrade_result.devices[0].reachability == 'reachable')
-            and (post_upgrade_result.devices[0].version == target_version)
-          retries: 60
-          delay: 10
-
-        - name: Show the verified device version
-          ansible.builtin.debug:
-            msg:
-              hostname: "{{ target_hostname }}"
-              original_version: "{{ selected_device.version }}"
-              reported_version: "{{ post_upgrade_result.devices[0].version }}"
-              reachability: "{{ post_upgrade_result.devices[0].reachability }}"
-
-        - name: Optionally make the target version the default
-          when: make_default | bool
-          block:
-            - name: Set the default software version
-              cisco.catalystwan.software_upgrade:
-                state: default
-                image_version: "{{ target_version }}"
-                devices:
-                  - "{{ selected_device.uuid }}"
-                wait_for_completed: true
-                wait_timeout_seconds: 1800
-
-            - name: Read back the default version
-              cisco.catalystwan.software_upgrade_info:
-                device_type: vedge
-                filters:
-                  host_name: "{{ target_hostname }}"
-              register: default_result
-
-            - name: Require one matching default-version record
-              ansible.builtin.assert:
-                that:
-                  - default_result.installed_devices | length == 1
-
-            - name: Verify the default version
-              ansible.builtin.assert:
-                that:
-                  - default_result.installed_devices[0].default_version == target_version
-                fail_msg: The device did not report the target version as default.
-
-    - name: Report read-only execution
-      ansible.builtin.debug:
-        msg: Discovery finished. Upgrade operations are disabled.
-      when: not (apply_upgrade | bool)
+    - name: Set target version as default
+      cisco.catalystwan.software_upgrade:
+        manager_credentials: "{{sdwan_login}}"
+        state: default
+        image_version: "{{target_version}}"
+        devices:
+          - "{{ edge.uuid }}"
+        wait_for_completed: true
+        wait_timeout_seconds: 1800
+      when: make_default | bool

@@ -58,20 +58,14 @@ def upload_image(session, image_path):
         return r
 
 def select_image(images, target_version):
-    matches = []
     for image in images:
         if image.get("versionName") == target_version and image.get("versionType") == "vmanage":
-            matches.append(image)
-
-    if len(matches) != 1:
-        raise ValueError("Expected exactly one matching version in the Manager repository.")
-
-    return matches[0]
+            return image
+    raise ValueError(f"Version '{target_version}' not found in the Manager repository.")
 
 def install_image(session, device, target_version):
     url = f"{BASE_URL}/dataservice/device/action/install"
-    # Local-repository payload used by the installed catalystwan SDK.
-    # This write path has not been tested on this reservation.
+    # NOT TESTED. versionType vmanage = image comes from the Manager repository.
     payload = {
         "action": "install",
         "input": {
@@ -132,136 +126,91 @@ def get_task(session, task_id):
 def wait_for_task(session, task_id, max_attempts=180, interval=10):
     for _ in range(max_attempts):
         task = get_task(session, task_id)
-        validation = task.get("validation") or {}
-
-        if validation.get("status") in ("Failure", "Validation failure"):
-            raise RuntimeError(f"Task validation failed: {validation}")
-
         results = task.get("data") or []
+
         for result in results:
-            if result.get("statusId") == "failure" or result.get("status") == "Failure":
+            if result.get("statusId") == "failure":
                 raise RuntimeError(f"Task failed: {result}")
 
-        # Empty results are not evidence of success.
-        if results and all(
-            result.get("statusId") == "success" or result.get("status") == "Success"
-            for result in results
-        ):
+        # Empty data means the task did not report yet, keep waiting.
+        done = 0
+        for result in results:
+            if result.get("statusId") == "success":
+                done += 1
+        if results and done == len(results):
             return task
 
         time.sleep(interval)
-
-    raise TimeoutError(f"Task {task_id} did not succeed after {max_attempts} attempts.")
+    raise TimeoutError(f"Task {task_id} did not complete after {max_attempts} attempts.")
 
 def verify_upgrade(session, device_uuid, target_version, max_attempts=60, interval=10):
+    # Task success is not enough, check what the device reports after the reboot.
     for _ in range(max_attempts):
-        try:
-            devices = get_devices(session)
-            for device in devices:
-                if device.get("uuid") == device_uuid:
-                    if device.get("reachability") == "reachable" and device.get("version") == target_version:
-                        software = get_device_software(session, device["system-ip"])
-                        for image in software:
-                            if image.get("version") == target_version and str(image.get("active")).lower() == "true":
-                                return device
-                    break
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-            pass
-
+        for device in get_devices(session):
+            if device.get("uuid") == device_uuid:
+                if device.get("reachability") == "reachable" and device.get("version") == target_version:
+                    return device
         time.sleep(interval)
-
-    raise TimeoutError("Device did not return reachable with the target version active.")
+    raise TimeoutError("Device did not come back reachable on the target version.")
 
 if __name__ == "__main__":
     with requests.Session() as session:
         session.verify = False
         session.headers.update({"Accept": "application/json"})
 
+        # 1. Authenticate. A failed login still returns 200, but with an HTML page.
         login_response = login(session)
         if "<html" in login_response.text.lower():
-            raise RuntimeError("SD-WAN login returned an HTML page; check authentication.")
+            raise RuntimeError("SD-WAN login failed, check username and password.")
 
         token = get_token(session)
         session.headers["X-XSRF-TOKEN"] = token.text.strip()
 
+        # 2. Inventory and repository
         devices = get_devices(session)
         images = get_images(session)
-
-        #print("DEVICES")
-        #print(json.dumps(devices, indent=2))
-        #print("SOFTWARE REPOSITORY")
-        #print(json.dumps(images, indent=2))
+        print(f"Count of images in repository: {len(images)}")
 
         selected_device = None
         for device in devices:
+            print(f"Hostname: {device.get('host-name')}, Version: {device.get('version')}, Reachability: {device.get('reachability')}")
             if device.get("host-name") == "Edge1":
                 selected_device = device
-                break
-
         if selected_device is None:
             raise ValueError("Device with hostname 'Edge1' not found.")
 
+        # 3. Software installed on Edge1
         software = get_device_software(session, selected_device["system-ip"])
         print(json.dumps(software, indent=2))
 
-        # Write operations are disabled until a compatible image is available.
+        # 4. Upgrade - NOT TESTED, no compatible image for this reservation.
+        # Order: upload -> install -> activate -> verify -> set default
         apply_upgrade = False
-        image_path = ""       # Optional: local .bin file to upload.
-        target_version = ""   # Exact versionName returned by the repository.
+        image_path = ""
+        target_version = ""
         make_default = False
 
         if apply_upgrade:
-            if not target_version:
-                raise ValueError("Set target_version before enabling upgrades.")
-
-            if selected_device.get("personality") != "vedge":
-                raise ValueError("This workflow is restricted to an edge device.")
-
-            if selected_device.get("reachability") != "reachable":
-                raise ValueError("The selected device is not reachable.")
-
             if selected_device.get("version") == target_version:
-                raise ValueError("The selected device is already running the target version.")
-
+                raise ValueError("Edge1 is already running the target version.")
             original_version = selected_device["version"]
 
             if image_path:
-                upload_result = upload_image(session, image_path)
-                print(f"Upload HTTP status: {upload_result.status_code}")
+                upload_image(session, image_path)
                 images = get_images(session)
 
             selected_image = select_image(images, target_version)
-            print(json.dumps(selected_image, indent=2))
+            print(f"Selected image: {selected_image['versionName']}")
 
             install_task_id = install_image(session, selected_device, target_version)
-            print(f"Installation task: {install_task_id}")
-            install_task = wait_for_task(session, install_task_id)
-            print(json.dumps(install_task, indent=2))
-
-            # Confirm installation before requesting activation.
-            software = get_device_software(session, selected_device["system-ip"])
-            if not any(image.get("version") == target_version for image in software):
-                raise RuntimeError("Installation finished but the target version is not listed on the device.")
+            wait_for_task(session, install_task_id)
 
             activate_task_id = activate_image(session, selected_device, target_version)
-            print(f"Activation task: {activate_task_id}")
-            activate_task = wait_for_task(session, activate_task_id)
-            print(json.dumps(activate_task, indent=2))
+            wait_for_task(session, activate_task_id)
 
-            verified_device = verify_upgrade(session, selected_device["uuid"], target_version)
-            print(f"Device: {verified_device['host-name']}, Before: {original_version}, After: {verified_device['version']}, Reachability: {verified_device['reachability']}")
+            verified = verify_upgrade(session, selected_device["uuid"], target_version)
+            print(f"Device: {verified['host-name']}, Before: {original_version}, After: {verified['version']}")
 
             if make_default:
                 default_task_id = set_default_image(session, selected_device, target_version)
-                print(f"Default-version task: {default_task_id}")
-                default_task = wait_for_task(session, default_task_id)
-                print(json.dumps(default_task, indent=2))
-
-                software = get_device_software(session, selected_device["system-ip"])
-                if not any(
-                    image.get("version") == target_version and str(image.get("default")).lower() == "true"
-                    for image in software
-                ):
-                    raise RuntimeError("The target version was not reported as default.")
-
-                print(f"Default version verified: {target_version}")
+                wait_for_task(session, default_task_id)
