@@ -1,0 +1,64 @@
+---
+- name: SD-WAN health lab
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    sdwan_login:
+      url: "{{ lookup('env', 'SDWAN_HOST') }}"
+      username: "{{ lookup('env', 'SDWAN_USERNAME') }}"
+      password: "{{ lookup('env', 'SDWAN_PASSWORD') }}"
+
+  tasks:
+  # DIdnt work on the sandbox, gave 26 entries not onboarded in the output
+  #- name: Check control connections on all devices
+  #  cisco.catalystwan.health_checks:
+  #    manager_credentials: "{{ sdwan_login }}"
+  #    check_type: "control_connections"
+  #  register: health_result
+
+  # last results only exists when task loops
+  #- name: Display health messages
+  #  ansible.builtin.debug:
+  #    var: health_result.results
+
+  # sucess not returned, no good to be used.
+  #- name: All checks must pass
+  #  ansible.builtin.assert:
+  #    that:
+  #      - health_result.success
+
+  - name: Check control connections per device
+    cisco.catalystwan.health_checks:
+      manager_credentials: "{{ sdwan_login }}"
+      check_type: "control_connections"
+      filters:
+        host_name: "{{ item }}"
+    loop: [Manager01, Controller01, Edge1, Edge2, Edge3, Edge4]
+    register: health_result
+
+  # full  dump used to find how results look like, too much output
+  #- name: Display results
+  #  ansible.builtin.debug:
+  #    var: health_result.results
+
+  - name: Display result per device
+    ansible.builtin.debug:
+      msg: "{{ item.item }} | {{ item.msg }}"
+    loop: "{{ health_result.results }}"
+    loop_control:
+      label: "{{ item.item }}"
+
+  - name: Check orchestrator connections on the Validator
+    cisco.catalystwan.health_checks:
+      manager_credentials: "{{ sdwan_login }}"
+      check_type: "orchestrator_connections"
+      filters:
+        host_name: "Validator01"
+    register: validator_result
+
+  - name: Display Validator result
+    ansible.builtin.debug:
+      var: validator_result.msg

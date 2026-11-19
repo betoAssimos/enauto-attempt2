@@ -1,0 +1,57 @@
+---
+- name: Catalyst Center Health lab
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+  # Retrieving from environment variables
+    catc_host: "{{ lookup('env', 'CATC_BASE_URL') | urlsplit('hostname') }}"
+    catc_username: "{{ lookup('env', 'CATC_USERNAME') }}"
+    catc_password: "{{ lookup('env', 'CATC_PASSWORD') }}"
+    expected_status: "Reachable"
+
+  tasks:
+  - name: Check Device
+    cisco.catalystcenter.network_device_info:
+      catalystcenter_host: "{{catc_host}}"
+      catalystcenter_username: "{{catc_username}}"
+      catalystcenter_password: "{{catc_password}}"
+      catalystcenter_verify: False
+      catalystcenter_version: "2.3.7.9"
+    register: device_result
+
+   #test: empty inventory branch
+  #- name: Fake an empty inventory
+  #  ansible.builtin.set_fact:
+  #    device_result:
+  #      catalyst_response:
+  #        response: []
+
+  - name: Inventory must not be empty
+    ansible.builtin.assert:
+      that:
+        - device_result.catalyst_response.response | length > 0
+      fail_msg: "No devices in inventory"
+      quiet: true
+
+  #- name: Display full inventory result
+    #ansible.builtin.debug:
+      #var: device_result.catalyst_response
+
+  - name: Display reachability per device
+    ansible.builtin.debug:
+      msg: "{{ item.hostname }} | {{ item.reachabilityStatus }}"
+    loop: "{{ device_result.catalyst_response.response }}"
+    loop_control:
+      label: "{{ item.hostname }}"
+  
+  - name: Every device must be reachable
+    ansible.builtin.assert:
+      that:
+        - item.reachabilityStatus == expected_status
+      fail_msg: "{{ item.hostname }} is {{ item.reachabilityStatus }}"
+      quiet: True
+    loop: "{{ device_result.catalyst_response.response }}"
+    loop_control:
+      label: "{{ item.hostname }}"
