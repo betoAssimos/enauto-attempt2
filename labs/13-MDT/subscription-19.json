@@ -1,0 +1,21 @@
+{
+  "Cisco-IOS-XE-mdt-cfg:mdt-subscription": [
+    {
+      "subscription-id": 19,
+      "base": {
+        "stream": "yang-push",
+        "encoding": "encode-kvgpb",
+        "source-vrf": "clab-mgmt",
+        "period": 1000,
+        "xpath": "/if:interfaces-state/interface[name=\"GigabitEthernet1\"]/statistics/in-octets"
+      },
+      "mdt-receivers": [
+        {
+          "address": "172.20.20.1",
+          "port": 57000,
+          "protocol": "grpc-tcp"
+        }
+      ]
+    }
+  ]
+}

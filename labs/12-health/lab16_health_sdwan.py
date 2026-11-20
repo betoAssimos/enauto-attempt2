@@ -62,7 +62,7 @@ if __name__ == "__main__":
         session.headers["X-XSRF-TOKEN"] = token.text.strip()
 
         devices = get_devices(session)
-        print(devices[0].keys())          # field names of one record
+        print(devices[0].keys())      
         for device in devices:
             print(device.get("host-name"), device.get("personality"), device.get("reachability"), device.get("status"), device.get("state"), repr(device.get("controlConnections")), repr(device.get("bfdSessions")))
 
