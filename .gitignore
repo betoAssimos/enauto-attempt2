@@ -4,9 +4,8 @@ __pycache__/
 .env
 *.log
 private/
-clab/clab-*/
-10-ai-mcp/lab-AI-02/client.py
+labs/10-ai-mcp/lab-AI-02/client.py
 clab/*
-Cisco*
-cisco*
-ospf*
+clab-*/
+labs/00-yang-jinja/yang-models/[Cc]isco*.yang
+labs/00-yang-jinja/ospf_tree.txt

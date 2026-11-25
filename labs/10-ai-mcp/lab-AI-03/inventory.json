@@ -1,0 +1,7 @@
+[
+    {
+        "name": "xe",
+        "host": "172.20.20.19",
+        "device_type": "cisco_xe"
+    }
+]
